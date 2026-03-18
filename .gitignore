@@ -23,6 +23,9 @@ deploy/
 .superpowers/
 .claude/
 
+# Session context / deployment notes (contain real env info)
+CLAUDE.md
+
 # Terraform state backups and plan files
 terraform/tfplan
 terraform/*.backup
