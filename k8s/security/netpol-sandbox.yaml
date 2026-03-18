@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: sandbox-egress
+  namespace: openclaw
+spec:
+  podSelector:
+    matchLabels:
+      app: openclaw-sandbox
+  policyTypes: [Egress]
+  egress:
+  # Feishu WebSocket (Outbound HTTPS)
+  - to: []            # Any external IP (Feishu CDN IPs are not fixed)
+    ports:
+    - protocol: TCP
+      port: 443
+  # APIM internal network
+  - to:
+    - ipBlock:
+        cidr: 10.0.8.0/24
+    ports:
+    - protocol: TCP
+      port: 443
+  # DNS
+  - to: []
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53

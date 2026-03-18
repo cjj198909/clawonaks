@@ -1,0 +1,18 @@
+# charts/openclaw/templates/storageclass-files.yaml
+# NOTE: Not currently used (NFS PV uses static binding).
+# Retained for future dynamic NFS provisioning.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: openclaw-files
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+provisioner: file.csi.azure.com
+parameters:
+  skuName: Premium_LRS
+  protocol: nfs
+  networkEndpointType: privateEndpoint
+reclaimPolicy: Retain
+volumeBindingMode: Immediate
+mountOptions:
+  - nconnect=4

@@ -1,0 +1,52 @@
+# DEPRECATED (2026-03-14): Replaced by Helm Chart templates.
+# See charts/openclaw/templates/admin-sa.yaml and admin-rbac.yaml.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw-admin
+  namespace: openclaw
+  annotations:
+    azure.workload.identity/client-id: "<admin_identity_client_id>"
+  labels:
+    azure.workload.identity/use: "true"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: openclaw-admin
+  namespace: openclaw
+rules:
+# Deployments: create, list, delete agent Deployments
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "create", "delete"]
+# PVCs: create, list, delete agent work disks
+- apiGroups: [""]
+  resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list", "create", "delete"]
+# SecretProviderClasses: create, delete per-agent SPC
+- apiGroups: ["secrets-store.csi.x-k8s.io"]
+  resources: ["secretproviderclasses"]
+  verbs: ["get", "list", "create", "delete"]
+# Pods: list for agent status
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+# Pods/exec: for credential rotation (delete config file)
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openclaw-admin
+  namespace: openclaw
+subjects:
+- kind: ServiceAccount
+  name: openclaw-admin
+  namespace: openclaw
+roleRef:
+  kind: Role
+  name: openclaw-admin
+  apiGroup: rbac.authorization.k8s.io

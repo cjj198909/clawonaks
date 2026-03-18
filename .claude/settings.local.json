@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(helm template:*)",
+      "Bash(git checkout:*)",
+      "Read(//home/vmadmin/**)",
+      "Bash(helm lint:*)",
+      "Bash(kubectl exec:*)",
+      "Bash(docker build:*)",
+      "Bash(kubectl rollout:*)",
+      "Bash(cd /home/vmadmin/clawonaks/terraform && terraform apply -target='azurerm_api_management_api_operation.openai_post[0]' -auto-approve 2>&1 | tail -15)",
+      "Bash(terraform init:*)",
+      "Bash(terraform apply:*)",
+      "Bash(terraform state:*)",
+      "Bash(kubectl logs:*)",
+      "Bash(az apim:*)",
+      "Bash(az rest:*)",
+      "Bash(terraform -chdir=terraform output -raw apim_backend_auth_mode 2>/dev/null || echo \"N/A\")",
+      "Bash(cd terraform:*)",
+      "Bash(kubectl get:*)",
+      "Bash(cd:*)",
+      "Bash(bash -n /home/vmadmin/clawonaks/scripts/install.sh 2>&1)",
+      "Bash(git commit:*)",
+      "Bash(az keyvault:*)",
+      "Bash(az group:*)",
+      "Bash(\\\\ terraform:*)",
+      "Bash(terraform import:*)",
+      "Bash(az aks:*)",
+      "Bash(kubectl annotate:*)",
+      "Bash(\\\\ az:*)",
+      "WebFetch(domain:www.feishu.cn)",
+      "Bash(curl:*)",
+      "Bash(az acr:*)"
+    ]
+  }
+}

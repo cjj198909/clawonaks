@@ -1,0 +1,33 @@
+<!-- policies/ai-gateway.xml -->
+<!-- Authentication + Rate Limiting + Token Metrics + Backend Routing -->
+<policies>
+  <inbound>
+    <!-- Managed Identity auth to Azure AI Foundry -->
+    <authentication-managed-identity
+      resource="https://cognitiveservices.azure.com"
+      output-token-variable-name="ai-token" />
+    <set-header name="Authorization" exists-action="override">
+      <value>@("Bearer " + (string)context.Variables["ai-token"])</value>
+    </set-header>
+
+    <!-- Token rate limiting: 60K TPM per agent subscription -->
+    <llm-token-limit
+      counter-key="@(context.Subscription.Id)"
+      tokens-per-minute="60000"
+      estimate-prompt-tokens="true"
+      remaining-tokens-variable-name="remainingTokens" />
+
+    <!-- Token consumption metrics -->
+    <llm-emit-token-metric namespace="AzureOpenAI">
+      <dimension name="Subscription" value="@(context.Subscription.Id)" />
+      <dimension name="Model" value="@(context.Request.Headers.GetValueOrDefault(&quot;model&quot;,&quot;unknown&quot;))" />
+    </llm-emit-token-metric>
+
+    <!-- Backend routing -->
+    <set-backend-service backend-id="ai-foundry-pool" />
+  </inbound>
+
+  <outbound>
+    <base />
+  </outbound>
+</policies>

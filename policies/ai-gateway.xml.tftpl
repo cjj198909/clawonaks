@@ -1,0 +1,66 @@
+<!-- APIM AI Gateway Policy (rendered by Terraform templatefile) -->
+<!-- Auth mode: ${auth_mode} -->
+<policies>
+  <inbound>
+    <base />
+%{ if auth_mode == "api_key" ~}
+    <!-- API Key mode: inject key from Named Value (backed by Key Vault) -->
+    <set-header name="api-key" exists-action="override">
+      <value>{{azure-openai-key}}</value>
+    </set-header>
+    <!-- Remove any Authorization header from the client — Azure OpenAI may
+         reject an invalid Bearer token even when a valid api-key is present -->
+    <set-header name="Authorization" exists-action="delete" />
+%{ endif ~}
+%{ if auth_mode == "managed_identity" ~}
+    <!-- Managed Identity mode: get bearer token for Cognitive Services -->
+    <authentication-managed-identity
+      resource="https://cognitiveservices.azure.com"
+      output-token-variable-name="ai-token" />
+    <set-header name="Authorization" exists-action="override">
+      <value>@("Bearer " + (string)context.Variables["ai-token"])</value>
+    </set-header>
+%{ endif ~}
+
+    <!-- Rate limiting: 60 calls/min per subscription (standard policy).
+         NOTE: LLM token-based policies (llm-token-limit, llm-emit-token-metric)
+         require API to be imported via the "Language Model API" portal flow.
+         For now, use standard rate limiting. Migrate to LLM policies when
+         re-importing the API via portal. -->
+    <rate-limit-by-key
+      calls="60"
+      renewal-period="60"
+      counter-key="@(context.Subscription.Id)"
+      remaining-calls-variable-name="remainingCalls" />
+
+    <!-- Ensure api-version is always a query parameter (Azure OpenAI requires it).
+         SDKs may send it as a header only, which causes 404. -->
+    <set-query-parameter name="api-version" exists-action="skip">
+      <value>${aoai_api_version}</value>
+    </set-query-parameter>
+
+    <!-- Backend routing via pool (circuit breaker on individual backends) -->
+    <set-backend-service backend-id="openai-backend-pool" />
+
+    <!-- Azure OpenAI Responses API only supports /openai/responses (model in body),
+         NOT /openai/deployments/{model}/responses. Rewrite when SDK uses the
+         deployment-in-URL pattern. chat/completions and other paths pass through. -->
+    <choose>
+      <when condition="@(context.Request.Url.Path.Contains(&quot;/responses&quot;))">
+        <rewrite-uri template="/responses" copy-unmatched-params="true" />
+      </when>
+    </choose>
+  </inbound>
+
+  <backend>
+    <base />
+  </backend>
+
+  <outbound>
+    <base />
+  </outbound>
+
+  <on-error>
+    <base />
+  </on-error>
+</policies>

@@ -1,0 +1,20 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.backup
+terraform/*.tfplan
+terraform/.terraform.lock.hcl
+terraform/terraform.tfvars
+
+# Deploy (templated K8s manifests with real values — never commit)
+deploy/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Worktrees
+.worktrees/

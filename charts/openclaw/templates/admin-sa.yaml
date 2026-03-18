@@ -1,0 +1,11 @@
+# charts/openclaw/templates/admin-sa.yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw-admin
+  namespace: {{ .Values.namespace }}
+  annotations:
+    azure.workload.identity/client-id: {{ .Values.identity.admin.clientId | quote }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+    azure.workload.identity/use: "true"

@@ -1,0 +1,5 @@
+resource_group = "openclaw-rg"
+location       = "eastasia"
+cluster_name   = "openclaw-aks"
+admin_email    = "admin@example.com"
+agent_ids      = ["alice"]

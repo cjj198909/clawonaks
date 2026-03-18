@@ -1,0 +1,64 @@
+# DEPRECATED (2026-03-14): Replaced by Helm Chart template.
+# See charts/openclaw/templates/admin-deployment.yaml for the canonical version.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw-admin
+  namespace: openclaw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openclaw-admin
+  template:
+    metadata:
+      labels:
+        app: openclaw-admin
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: openclaw-admin
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+      - name: admin
+        image: <acr_login_server>/openclaw-admin:latest
+        ports:
+        - containerPort: 3000
+        env:
+        - name: KV_NAME
+          value: "<keyvault_name>"
+        - name: AZURE_OPENAI_ENDPOINT
+          value: "<azure_openai_endpoint>"
+        - name: SANDBOX_MI_CLIENT_ID
+          value: "<sandbox_identity_client_id>"
+        - name: TENANT_ID
+          value: "<tenant-id>"
+        - name: ACR_LOGIN_SERVER
+          value: "<acr_login_server>"
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-admin
+  namespace: openclaw
+spec:
+  selector:
+    app: openclaw-admin
+  ports:
+  - port: 3000
+    targetPort: 3000

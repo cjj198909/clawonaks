@@ -1,0 +1,21 @@
+# charts/openclaw/templates/nfs-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: openclaw-nfs-pv
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  capacity:
+    storage: {{ .Values.azure.storage.nfsQuota }}
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  csi:
+    driver: file.csi.azure.com
+    volumeHandle: {{ .Values.azure.storage.nfsVolumeHandle }}
+    volumeAttributes:
+      resourceGroup: {{ .Values.azure.storage.resourceGroup | quote }}
+      storageAccount: {{ .Values.azure.storage.accountName | quote }}
+      shareName: {{ .Values.azure.storage.shareName | quote }}
+      protocol: nfs

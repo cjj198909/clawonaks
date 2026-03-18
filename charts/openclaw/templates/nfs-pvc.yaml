@@ -1,0 +1,16 @@
+# charts/openclaw/templates/nfs-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-shared-data
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: {{ .Values.azure.storage.nfsQuota }}
+  volumeName: openclaw-nfs-pv
+  storageClassName: ""

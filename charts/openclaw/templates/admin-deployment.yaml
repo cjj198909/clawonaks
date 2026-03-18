@@ -1,0 +1,82 @@
+# charts/openclaw/templates/admin-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+    app: openclaw-admin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openclaw-admin
+  template:
+    metadata:
+      labels:
+        app: openclaw-admin
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: openclaw-admin
+      nodeSelector:
+        kubernetes.io/os: linux
+      containers:
+      - name: admin
+        image: {{ .Values.azure.acr.loginServer }}/{{ .Values.images.admin.name }}:{{ .Values.images.admin.tag }}
+        ports:
+        - containerPort: 3000
+        env:
+        - name: KV_NAME
+          value: {{ .Values.azure.keyvault.name | quote }}
+        - name: NAMESPACE
+          value: {{ .Values.namespace | quote }}
+        - name: AGENT_TEMPLATE_PATH
+          value: /etc/openclaw/agent-template.yaml
+        {{- if .Values.apim.enabled }}
+        - name: APIM_ENABLED
+          value: "true"
+        - name: APIM_NAME
+          value: {{ .Values.apim.name | quote }}
+        - name: APIM_RG
+          value: {{ .Values.apim.resourceGroup | quote }}
+        - name: APIM_API_ID
+          value: {{ .Values.apim.apiId | quote }}
+        {{- end }}
+        volumeMounts:
+        - name: agent-template
+          mountPath: /etc/openclaw
+          readOnly: true
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1000
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          seccompProfile:
+            type: RuntimeDefault
+        resources:
+          requests:
+            cpu: {{ .Values.admin.resources.requests.cpu }}
+            memory: {{ .Values.admin.resources.requests.memory }}
+          limits:
+            cpu: {{ .Values.admin.resources.limits.cpu }}
+            memory: {{ .Values.admin.resources.limits.memory }}
+      volumes:
+      - name: agent-template
+        configMap:
+          name: openclaw-agent-template
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw-admin
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  selector:
+    app: openclaw-admin
+  ports:
+  - port: 3000
+    targetPort: 3000

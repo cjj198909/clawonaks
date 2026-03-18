@@ -1,0 +1,1 @@
+{"type":"click","text":"A\n    \n      Single Admin (You Only) (Recommended)\n      No login needed — access via kubectl port-forward. Simplest approach, zero auth code. The panel is a private tool behind K8s network.","choice":"single-admin","id":null,"timestamp":1773406417385}

@@ -1,0 +1,31 @@
+# charts/openclaw/ci/test-values.yaml
+# Used by: helm lint, helm template
+azure:
+  tenantId: "00000000-0000-0000-0000-000000000000"
+  acr:
+    loginServer: "testacr.azurecr.io"
+  keyvault:
+    name: "test-kv"
+  openai:
+    endpoint: "https://test.openai.azure.com"
+  storage:
+    accountName: "teststorage"
+    resourceGroup: "test-rg"
+    shareName: "openclaw-data"
+    nfsQuota: "100Gi"
+    nfsVolumeHandle: "openclaw-nfs-unique-id"
+identity:
+  sandbox:
+    clientId: "00000000-0000-0000-0000-000000000001"
+  admin:
+    clientId: "00000000-0000-0000-0000-000000000002"
+apim:
+  enabled: true
+  gatewayUrl: "https://test-apim.azure-api.net"
+  apiPath: "openai"
+  name: "test-apim"
+  resourceGroup: "test-rg"
+  apiId: "/subscriptions/00000000/resourceGroups/test-rg/providers/Microsoft.ApiManagement/service/test-apim/apis/azure-openai"
+  model:
+    id: "gpt-5.4"
+    name: "GPT-5.4 (via APIM)"

@@ -1,0 +1,85 @@
+# -- Azure infrastructure (populated by install.sh from terraform output)
+azure:
+  tenantId: ""
+  acr:
+    loginServer: ""
+  keyvault:
+    name: ""
+  openai:
+    endpoint: ""
+  storage:
+    accountName: ""
+    resourceGroup: ""
+    shareName: "openclaw-data"
+    nfsQuota: "100Gi"
+    nfsVolumeHandle: "openclaw-nfs-unique-id"
+
+# -- Identity (from terraform output)
+identity:
+  sandbox:
+    clientId: ""
+  admin:
+    clientId: ""
+
+# -- Namespace
+namespace: openclaw
+
+# -- Agent defaults (embedded in ConfigMap template)
+agent:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1.5Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  nodeOptions: "--max-old-space-size=2048"
+  workDiskSize: 5Gi
+  # -- tmpfs optimization: copy openclaw modules to in-VM memory
+  #    to avoid slow virtiofs I/O in Kata VM (~21s -> ~4s require() time)
+  tmpfs:
+    enabled: true
+    sizeLimit: 800Mi
+  persistSync:
+    syncInterval: 3600
+    resources:
+      requests:
+        cpu: 50m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 64Mi
+
+# -- Admin Panel
+admin:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -- APIM AI Gateway (disabled by default)
+apim:
+  enabled: false
+  gatewayUrl: ""
+  apiPath: "openai"
+  name: ""
+  resourceGroup: ""
+  apiId: ""
+  model:
+    id: "gpt-5.4"
+    name: "GPT-5.4 (via APIM)"
+
+# -- Container images
+images:
+  agent:
+    name: openclaw-agent
+    tag: latest
+  persistSync:
+    name: persist-sync
+    tag: latest
+  admin:
+    name: openclaw-admin
+    tag: latest

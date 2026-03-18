@@ -1,0 +1,222 @@
+# DEPRECATED (2026-03-14): v1 StatefulSet architecture.
+# Replaced by Helm Chart + agent-deployment.template.yaml.
+# See charts/openclaw/ for the canonical deployment method.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openclaw-agent
+  namespace: openclaw
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: Parallel
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: openclaw-sandbox
+  serviceName: openclaw
+  template:
+    metadata:
+      labels:
+        app: openclaw-sandbox
+    spec:
+      containers:
+      - command: ["/bin/sh", "-c"]
+        args:
+        - |
+          OPENCLAW_DIR=/home/node/.openclaw
+          if [ -f "$OPENCLAW_DIR/feishu.env" ]; then
+            . "$OPENCLAW_DIR/feishu.env"
+            echo "Loaded per-agent Feishu credentials from feishu.env"
+          elif [ -n "$FEISHU_APP_ID" ]; then
+            echo "Using shared Feishu credentials from env vars"
+          else
+            echo "WARNING: No Feishu credentials found"
+          fi
+          exec openclaw gateway run --verbose
+        env:
+        - name: NODE_OPTIONS
+          value: "--max-old-space-size=2048"
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.name
+        image: <acr_login_server>/openclaw-agent:latest
+        imagePullPolicy: Always
+        name: openclaw
+        resources:
+          limits:
+            cpu: "2"
+            memory: 3Gi
+          requests:
+            cpu: 500m
+            memory: 1Gi
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /home/node/.openclaw
+          name: work-disk
+      dnsPolicy: ClusterFirst
+      initContainers:
+      - args:
+        - |
+          set -e
+          OPENCLAW_DIR=/home/node/.openclaw
+          PERSIST=/persist
+
+          ORDINAL=$(hostname | rev | cut -d'-' -f1 | rev)
+          AGENT_ID=$(cat /config/agent-mapping/agent-${ORDINAL} 2>/dev/null)
+
+          if [ -z "$AGENT_ID" ]; then
+            echo "ERROR: No agent-id mapping for ordinal $ORDINAL"
+            exit 1
+          fi
+
+          echo "Pod ordinal=$ORDINAL -> agent-id=$AGENT_ID"
+          echo "$AGENT_ID" > $OPENCLAW_DIR/.agent-id
+
+          AGENT_PERSIST="$PERSIST/agents/$AGENT_ID"
+          mkdir -p $OPENCLAW_DIR/workspace/memory $OPENCLAW_DIR/devices $OPENCLAW_DIR/sessions
+
+          # Copy agent config if it exists
+          if [ -f "$AGENT_PERSIST/config.json" ]; then
+            cp "$AGENT_PERSIST/config.json" "$OPENCLAW_DIR/openclaw.json"
+            echo "Copied agent config from $AGENT_PERSIST/config.json"
+          fi
+
+          # Copy per-agent Feishu credentials if they exist
+          if [ -f "$AGENT_PERSIST/feishu.env" ]; then
+            cp "$AGENT_PERSIST/feishu.env" "$OPENCLAW_DIR/feishu.env"
+            echo "Copied per-agent Feishu credentials"
+          fi
+
+          echo "Workspace setup complete for agent=$AGENT_ID"
+        command:
+        - /bin/sh
+        - -c
+        image: busybox:1.36
+        imagePullPolicy: IfNotPresent
+        name: setup-workspace
+        resources: {}
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /home/node/.openclaw
+          name: work-disk
+        - mountPath: /persist
+          name: persist-files
+        - mountPath: /config/agent-mapping
+          name: agent-mapping
+          readOnly: true
+      - args:
+        - |
+          OPENCLAW_DIR=/home/node/.openclaw
+          while [ ! -f "$OPENCLAW_DIR/.agent-id" ]; do sleep 1; done
+          AGENT_ID=$(cat "$OPENCLAW_DIR/.agent-id")
+          PERSIST="/persist/agents/$AGENT_ID"
+          echo "[persist-sync] Agent ID: $AGENT_ID, persist path: $PERSIST"
+          mkdir -p $PERSIST
+
+          sync_files() {
+            for f in openclaw.json auth-profiles.json; do
+              [ -f "$OPENCLAW_DIR/$f" ] && cp "$OPENCLAW_DIR/$f" "$PERSIST/$f" 2>/dev/null || true
+            done
+          }
+
+          trap 'echo "[persist-sync] SIGTERM, final sync..."; sync_files; exit 0' TERM INT
+
+          while true; do
+            sleep 120
+            sync_files
+          done
+        command:
+        - /bin/sh
+        - -c
+        image: openclawacre2a78886.azurecr.io/persist-sync:latest
+        imagePullPolicy: Always
+        name: persist-sync
+        resources:
+          limits:
+            cpu: 100m
+            memory: 64Mi
+          requests:
+            cpu: 50m
+            memory: 32Mi
+        restartPolicy: Always
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          readOnlyRootFilesystem: false
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /home/node/.openclaw
+          name: work-disk
+          readOnly: true
+        - mountPath: /persist
+          name: persist-files
+      nodeSelector:
+        openclaw.io/role: sandbox
+      restartPolicy: Always
+      runtimeClassName: kata-vm-isolation
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        runAsUser: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccount: openclaw-sandbox
+      serviceAccountName: openclaw-sandbox
+      terminationGracePeriodSeconds: 30
+      tolerations:
+      - effect: NoSchedule
+        key: openclaw.io/sandbox
+        operator: Equal
+        value: "true"
+      volumes:
+      - name: persist-files
+        persistentVolumeClaim:
+          claimName: openclaw-shared-data
+      - configMap:
+          defaultMode: 420
+          name: agent-mapping
+        name: agent-mapping
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+  - apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      creationTimestamp: null
+      name: work-disk
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 5Gi
+      storageClassName: openclaw-disk
+      volumeMode: Filesystem
+    status:
+      phase: Pending

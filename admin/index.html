@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenClaw Admin</title>
+  <style>
+    :root {
+      --bg: #0d1117; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-dim: #8b949e; --accent: #58a6ff;
+      --green: #3fb950; --red: #f85149; --yellow: #d29922;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg); color: var(--text); padding: 2rem; max-width: 800px; margin: 0 auto;
+    }
+    h1 { margin-bottom: 0.5rem; font-size: 1.5rem; }
+    .subtitle { color: var(--text-dim); margin-bottom: 2rem; }
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem;
+    }
+    h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+    .form-group { margin-bottom: 1rem; }
+    label { display: block; margin-bottom: 0.3rem; color: var(--text-dim); font-size: 0.85rem; }
+    input {
+      width: 100%; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text); font-size: 0.9rem;
+    }
+    input:focus { outline: none; border-color: var(--accent); }
+    input:disabled { opacity: 0.5; }
+    button {
+      background: var(--accent); color: #fff; border: none; border-radius: 6px;
+      padding: 0.6rem 1.5rem; font-size: 0.9rem; cursor: pointer; font-weight: 600;
+    }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+    .progress { display: none; margin-top: 1rem; }
+    .progress.visible { display: block; }
+    .step {
+      display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0;
+      color: var(--text-dim); font-size: 0.9rem;
+    }
+    .step.running { color: var(--yellow); }
+    .step.done { color: var(--green); }
+    .step.error { color: var(--red); }
+    .step-icon { width: 1.2rem; text-align: center; }
+    .error-msg {
+      background: rgba(248, 81, 73, 0.1); border: 1px solid var(--red);
+      border-radius: 6px; padding: 0.8rem; color: var(--red); margin-top: 1rem;
+      display: none; font-size: 0.9rem;
+    }
+    .error-msg.visible { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th { text-align: left; color: var(--text-dim); padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    td { padding: 0.5rem; border-bottom: 1px solid var(--border); }
+    .badge {
+      display: inline-block; padding: 0.15rem 0.5rem; border-radius: 12px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .badge-running { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+    .badge-pending { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+    .badge-other { background: rgba(139, 148, 158, 0.15); color: var(--text-dim); }
+    .empty { color: var(--text-dim); text-align: center; padding: 2rem; }
+    .btn-delete {
+      background: transparent; color: var(--red); border: 1px solid var(--red);
+      border-radius: 4px; padding: 0.2rem 0.6rem; font-size: 0.75rem; cursor: pointer;
+    }
+    .btn-delete:hover { background: rgba(248, 81, 73, 0.15); }
+    .btn-approve {
+      background: transparent; color: var(--accent); border: 1px solid var(--accent);
+      border-radius: 4px; padding: 0.2rem 0.6rem; font-size: 0.75rem; cursor: pointer;
+      margin-right: 0.4rem;
+    }
+    .btn-approve:hover { background: rgba(88, 166, 255, 0.15); }
+    .btn-approve:disabled { opacity: 0.4; cursor: not-allowed; }
+    .approve-status { font-size: 0.75rem; margin-left: 0.3rem; }
+  </style>
+</head>
+<body>
+  <h1>OpenClaw Admin</h1>
+  <p class="subtitle">Create and manage OpenClaw agents</p>
+
+  <div class="card">
+    <h2>Create Agent</h2>
+    <form id="createForm">
+      <div class="form-group">
+        <label for="agentId">Agent ID</label>
+        <input type="text" id="agentId" placeholder="e.g. alice" required
+               pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label for="feishuAppId">Feishu App ID</label>
+        <input type="text" id="feishuAppId" placeholder="cli_..." required>
+      </div>
+      <div class="form-group">
+        <label for="feishuAppSecret">Feishu App Secret</label>
+        <input type="password" id="feishuAppSecret" placeholder="Secret" required>
+      </div>
+      <button type="submit" id="submitBtn">Create Agent</button>
+    </form>
+
+    <div class="progress" id="progress">
+      <div class="step" data-step="1"><span class="step-icon">⏳</span> Store Feishu credentials in Key Vault</div>
+      <div class="step" data-step="2"><span class="step-icon">⏳</span> Create K8s resources (SPC + PVC + Deployment)</div>
+    </div>
+    <div class="error-msg" id="errorMsg"></div>
+  </div>
+
+  <div class="card">
+    <h2>Agents</h2>
+    <div id="agentList"><p class="empty">Loading...</p></div>
+  </div>
+
+  <script>
+    const form = document.getElementById('createForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const progressEl = document.getElementById('progress');
+    const errorEl = document.getElementById('errorMsg');
+
+    function setFormDisabled(disabled) {
+      submitBtn.disabled = disabled;
+      form.querySelectorAll('input').forEach(i => (i.disabled = disabled));
+    }
+
+    function resetProgress() {
+      progressEl.classList.remove('visible');
+      errorEl.classList.remove('visible');
+      progressEl.querySelectorAll('.step').forEach(s => {
+        s.className = 'step';
+        s.querySelector('.step-icon').textContent = '⏳';
+      });
+    }
+
+    function updateStep(step, status) {
+      const el = progressEl.querySelector(`[data-step="${step}"]`);
+      if (!el) return;
+      el.className = `step ${status}`;
+      const icons = { running: '⏳', done: '✅', error: '❌' };
+      el.querySelector('.step-icon').textContent = icons[status] || '⏳';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      resetProgress();
+      progressEl.classList.add('visible');
+      setFormDisabled(true);
+
+      const body = {
+        agentId: document.getElementById('agentId').value.trim(),
+        feishuAppId: document.getElementById('feishuAppId').value.trim(),
+        feishuAppSecret: document.getElementById('feishuAppSecret').value.trim(),
+      };
+
+      try {
+        const resp = await fetch('/api/agents', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+
+        if (!resp.ok && resp.headers.get('content-type')?.includes('json')) {
+          const err = await resp.json();
+          throw new Error(err.error || `HTTP ${resp.status}`);
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const lines = buffer.split('\n');
+          buffer = lines.pop(); // keep incomplete line
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            try {
+              const msg = JSON.parse(line.slice(6));
+              if (msg.status === 'error') {
+                updateStep(msg.step || 0, 'error');
+                errorEl.textContent = msg.msg;
+                errorEl.classList.add('visible');
+              } else {
+                updateStep(msg.step, msg.status);
+              }
+              if (msg.done) loadAgents();
+            } catch {}
+          }
+        }
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.add('visible');
+      }
+
+      setFormDisabled(false);
+    });
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    async function loadAgents() {
+      const el = document.getElementById('agentList');
+      try {
+        const resp = await fetch('/api/agents');
+        const agents = await resp.json();
+        if (!agents.length) {
+          el.innerHTML = '<p class="empty">No agents yet</p>';
+          return;
+        }
+        el.innerHTML = `<table>
+          <tr><th>Agent ID</th><th>Status</th><th>Ready</th><th>Actions</th></tr>
+          ${agents.map(a => {
+            const cls = a.podStatus === 'Running' ? 'running' : a.podStatus === 'Pending' ? 'pending' : 'other';
+            return `<tr>
+              <td><strong>${esc(a.agentId)}</strong></td>
+              <td><span class="badge badge-${cls}">${esc(a.podStatus)}</span></td>
+              <td>${esc(a.podReady)}</td>
+              <td><button id="approve-btn-${esc(a.agentId)}" class="btn-approve"${a.podStatus !== 'Running' ? ' disabled' : ''} onclick="approveAgent('${esc(a.agentId)}')">Approve</button><button class="btn-delete" onclick="deleteAgent('${esc(a.agentId)}')">Delete</button><span id="approve-status-${esc(a.agentId)}" class="approve-status"></span></td>
+            </tr>`;
+          }).join('')}
+        </table>`;
+      } catch (err) {
+        el.innerHTML = `<p class="empty">Failed to load agents: ${esc(err.message)}</p>`;
+      }
+    }
+
+    async function deleteAgent(agentId) {
+      if (!confirm(`Delete agent "${agentId}"? The PVC (workspace data) will be preserved.`)) return;
+      try {
+        const resp = await fetch(`/api/agents/${agentId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        loadAgents();
+      } catch (err) {
+        alert(`Delete failed: ${err.message}`);
+      }
+    }
+
+    async function approveAgent(agentId) {
+      const code = prompt(`Enter pairing code for "${agentId}":`);
+      if (!code || !code.trim()) return;
+
+      const statusEl = document.getElementById(`approve-status-${agentId}`);
+      const btn = document.getElementById(`approve-btn-${agentId}`);
+      if (statusEl) statusEl.textContent = '⏳';
+      if (btn) btn.disabled = true;
+
+      try {
+        const resp = await fetch(`/api/agents/${agentId}/approve`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: code.trim() }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        if (statusEl) {
+          statusEl.textContent = '✅ Approved';
+          statusEl.style.color = 'var(--green)';
+          setTimeout(() => { statusEl.textContent = ''; if (btn) btn.disabled = false; }, 3000);
+        } else {
+          if (btn) btn.disabled = false;
+        }
+      } catch (err) {
+        if (statusEl) {
+          statusEl.textContent = `❌ ${err.message}`;
+          statusEl.style.color = 'var(--red)';
+          setTimeout(() => { statusEl.textContent = ''; if (btn) btn.disabled = false; }, 5000);
+        } else {
+          if (btn) btn.disabled = false;
+        }
+      }
+    }
+
+    loadAgents();
+  </script>
+</body>
+</html>

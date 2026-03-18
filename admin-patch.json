@@ -1,0 +1,1 @@
+[{"op":"replace","path":"/spec/template/spec/containers/0/env/6","value":{"name":"APIM_API_ID","value":"/subscriptions/55a5740e-376a-4d19-9be9-ae2be9c3731e/resourceGroups/openclaw-rg/providers/Microsoft.ApiManagement/service/openclaw-apim/apis/azure-openai"}}]

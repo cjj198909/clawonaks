@@ -1,0 +1,260 @@
+# charts/openclaw/templates/agent-template-cm.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-agent-template
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+data:
+  agent-template.yaml: |
+    ---
+    apiVersion: secrets-store.csi.x-k8s.io/v1
+    kind: SecretProviderClass
+    metadata:
+      name: spc-__AGENT_ID__
+      namespace: {{ .Values.namespace }}
+    spec:
+      provider: azure
+      parameters:
+        usePodIdentity: "false"
+        clientID: {{ .Values.identity.sandbox.clientId | quote }}
+        keyvaultName: {{ .Values.azure.keyvault.name | quote }}
+        tenantId: {{ .Values.azure.tenantId | quote }}
+        objects: |
+          array:
+            - |
+              objectName: feishu-app-id-__AGENT_ID__
+              objectType: secret
+              objectAlias: feishu-app-id
+            - |
+              objectName: feishu-app-secret-__AGENT_ID__
+              objectType: secret
+              objectAlias: feishu-app-secret
+{{- if .Values.apim.enabled }}
+            - |
+              objectName: apim-sub-key-__AGENT_ID__
+              objectType: secret
+              objectAlias: apim-subscription-key
+{{- else }}
+            - |
+              objectName: azure-openai-key
+              objectType: secret
+              objectAlias: azure-openai-key
+{{- end }}
+    ---
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    metadata:
+      name: work-disk-__AGENT_ID__
+      namespace: {{ .Values.namespace }}
+      labels:
+        app: openclaw-sandbox
+        openclaw.io/agent-id: __AGENT_ID__
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      storageClassName: openclaw-disk
+      resources:
+        requests:
+          storage: {{ .Values.agent.workDiskSize }}
+    ---
+    apiVersion: apps/v1
+    kind: Deployment
+    metadata:
+      name: openclaw-agent-__AGENT_ID__
+      namespace: {{ .Values.namespace }}
+      labels:
+        app: openclaw-sandbox
+        openclaw.io/agent-id: __AGENT_ID__
+    spec:
+      replicas: 1
+      selector:
+        matchLabels:
+          app: openclaw-sandbox
+          openclaw.io/agent-id: __AGENT_ID__
+      template:
+        metadata:
+          labels:
+            app: openclaw-sandbox
+            openclaw.io/agent-id: __AGENT_ID__
+            azure.workload.identity/use: "true"
+        spec:
+          serviceAccountName: openclaw-sandbox
+          runtimeClassName: kata-vm-isolation
+          terminationGracePeriodSeconds: 30
+          nodeSelector:
+            openclaw.io/role: sandbox
+          tolerations:
+          - key: openclaw.io/sandbox
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+            runAsNonRoot: true
+            fsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          initContainers:
+          - name: setup-config
+            image: busybox:1.36
+            imagePullPolicy: IfNotPresent
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -e
+              OPENCLAW_DIR=/home/node/.openclaw
+              mkdir -p "$OPENCLAW_DIR/workspace/memory" "$OPENCLAW_DIR/devices" "$OPENCLAW_DIR/sessions"
+              if [ -f "$OPENCLAW_DIR/openclaw.json" ]; then
+                echo "Config exists on PVC, preserving runtime state"
+                exit 0
+              fi
+              FEISHU_ID=$(cat /secrets/feishu-app-id)
+              FEISHU_SECRET=$(cat /secrets/feishu-app-secret)
+{{- if .Values.apim.enabled }}
+              APIM_KEY=$(cat /secrets/apim-subscription-key)
+              printf '%s\n' "{\"gateway\":{\"mode\":\"local\"},\"channels\":{\"feishu\":{\"enabled\":true,\"appId\":\"$FEISHU_ID\",\"appSecret\":\"$FEISHU_SECRET\"}},\"tools\":{\"exec\":{\"security\":\"full\"}},\"models\":{\"providers\":{\"azure-apim\":{\"baseUrl\":\"{{ .Values.apim.gatewayUrl }}/{{ .Values.apim.apiPath }}\",\"apiKey\":\"$APIM_KEY\",\"api\":\"openai-responses\",\"headers\":{\"Ocp-Apim-Subscription-Key\":\"$APIM_KEY\",\"api-version\":\"2025-04-01-preview\"},\"models\":[{\"id\":\"{{ .Values.apim.model.id }}\",\"name\":\"{{ .Values.apim.model.name }}\"}]}}}}" > "$OPENCLAW_DIR/openclaw.json"
+              echo "Config assembled (APIM mode)"
+{{- else }}
+              AOAI_KEY=$(cat /secrets/azure-openai-key)
+              printf '%s\n' "{\"gateway\":{\"mode\":\"local\"},\"channels\":{\"feishu\":{\"enabled\":true,\"appId\":\"$FEISHU_ID\",\"appSecret\":\"$FEISHU_SECRET\"}},\"tools\":{\"exec\":{\"security\":\"full\"}},\"models\":{\"providers\":{\"azure-openai-direct\":{\"baseUrl\":\"$AOAI_ENDPOINT\",\"apiKey\":\"$AOAI_KEY\",\"api\":\"openai-responses\",\"models\":[{\"id\":\"gpt-5.4\",\"name\":\"GPT-5.4 (Direct Azure OpenAI)\"}]}}}}" > "$OPENCLAW_DIR/openclaw.json"
+              echo "Config assembled from KV secrets"
+{{- end }}
+{{- if not .Values.apim.enabled }}
+            env:
+            - name: AOAI_ENDPOINT
+              value: {{ .Values.azure.openai.endpoint | quote }}
+{{- end }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: false
+            resources:
+              requests:
+                cpu: 50m
+                memory: 32Mi
+              limits:
+                cpu: 200m
+                memory: 64Mi
+            volumeMounts:
+            - name: kv-secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: work-disk
+              mountPath: /home/node/.openclaw
+          - name: persist-sync
+            restartPolicy: Always
+            image: {{ .Values.azure.acr.loginServer }}/{{ .Values.images.persistSync.name }}:{{ .Values.images.persistSync.tag }}
+            imagePullPolicy: Always
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              OPENCLAW_DIR=/home/node/.openclaw
+              PERSIST="/persist/agents/$AGENT_ID"
+              echo "[persist-sync] Agent: $AGENT_ID, backup path: $PERSIST"
+              mkdir -p "$PERSIST"
+              sync_files() {
+                for f in openclaw.json auth-profiles.json; do
+                  [ -f "$OPENCLAW_DIR/$f" ] && cp "$OPENCLAW_DIR/$f" "$PERSIST/$f" 2>/dev/null || true
+                done
+              }
+              trap 'echo "[persist-sync] SIGTERM, final sync..."; sync_files; exit 0' TERM INT
+              while true; do
+                sleep {{ .Values.agent.persistSync.syncInterval }}
+                sync_files
+              done
+            env:
+            - name: AGENT_ID
+              value: __AGENT_ID__
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: false
+            resources:
+              requests:
+                cpu: {{ .Values.agent.persistSync.resources.requests.cpu }}
+                memory: {{ .Values.agent.persistSync.resources.requests.memory }}
+              limits:
+                cpu: {{ .Values.agent.persistSync.resources.limits.cpu }}
+                memory: {{ .Values.agent.persistSync.resources.limits.memory }}
+            volumeMounts:
+            - name: work-disk
+              mountPath: /home/node/.openclaw
+              readOnly: true
+            - name: persist-files
+              mountPath: /persist
+          containers:
+          - name: openclaw
+            image: {{ .Values.azure.acr.loginServer }}/{{ .Values.images.agent.name }}:{{ .Values.images.agent.tag }}
+            imagePullPolicy: Always
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              {{- if .Values.agent.tmpfs.enabled }}
+              echo "[tmpfs] Extracting pre-packed openclaw bundle to in-VM memory..."
+              tar xf /opt/openclaw-bundle.tar -C /opt/openclaw-fast/
+              mkdir -p /home/node/bin
+              cat > /home/node/bin/openclaw << 'WRAPPER'
+              #!/bin/sh
+              exec node /opt/openclaw-fast/openclaw/openclaw.mjs "$@"
+              WRAPPER
+              chmod +x /home/node/bin/openclaw
+              # Always update AGENTS.md in workspace (overwrite to pick up new versions)
+              cp /home/node/workspace-defaults/AGENTS.md /home/node/.openclaw/workspace/AGENTS.md 2>/dev/null || true
+              # Copy TOOLS.md and MEMORY.md only if they don't exist (agent may customize)
+              cp -n /home/node/workspace-defaults/TOOLS.md /home/node/.openclaw/workspace/TOOLS.md 2>/dev/null || true
+              cp -n /home/node/workspace-defaults/MEMORY.md /home/node/.openclaw/workspace/MEMORY.md 2>/dev/null || true
+              echo "[tmpfs] Ready ($(du -sh /opt/openclaw-fast/openclaw | cut -f1))"
+              exec node /opt/openclaw-fast/openclaw/openclaw.mjs gateway run --verbose
+              {{- else }}
+              exec openclaw gateway run --verbose
+              {{- end }}
+            env:
+            - name: NODE_OPTIONS
+              value: {{ .Values.agent.nodeOptions | quote }}
+            {{- if .Values.agent.tmpfs.enabled }}
+            - name: PATH
+              value: "/home/node/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+            {{- end }}
+            securityContext:
+              allowPrivilegeEscalation: false
+              capabilities:
+                drop: ["ALL"]
+              readOnlyRootFilesystem: false
+            resources:
+              requests:
+                cpu: {{ .Values.agent.resources.requests.cpu }}
+                memory: {{ .Values.agent.resources.requests.memory }}
+              limits:
+                cpu: {{ .Values.agent.resources.limits.cpu | quote }}
+                memory: {{ .Values.agent.resources.limits.memory }}
+            volumeMounts:
+            - name: work-disk
+              mountPath: /home/node/.openclaw
+            {{- if .Values.agent.tmpfs.enabled }}
+            - name: openclaw-fast
+              mountPath: /opt/openclaw-fast
+            {{- end }}
+          volumes:
+          - name: kv-secrets
+            csi:
+              driver: secrets-store.csi.k8s.io
+              readOnly: true
+              volumeAttributes:
+                secretProviderClass: spc-__AGENT_ID__
+          - name: work-disk
+            persistentVolumeClaim:
+              claimName: work-disk-__AGENT_ID__
+          - name: persist-files
+            persistentVolumeClaim:
+              claimName: openclaw-shared-data
+          {{- if .Values.agent.tmpfs.enabled }}
+          - name: openclaw-fast
+            emptyDir:
+              medium: Memory
+              sizeLimit: {{ .Values.agent.tmpfs.sizeLimit }}
+          {{- end }}
