@@ -239,8 +239,14 @@ SANDBOX_MI_CLIENT_ID=$(terraform output -raw sandbox_identity_client_id)
 ADMIN_MI_CLIENT_ID=$(terraform output -raw admin_identity_client_id)
 TENANT_ID=$(az account show --query tenantId -o tsv)
 APIM_GATEWAY_URL=$(terraform output -raw apim_gateway_url 2>/dev/null || echo "")
-APIM_API_ID=""  # APIM sub-resources managed by az CLI, not Terraform state
 APIM_NAME_TF=$(terraform output -raw apim_name 2>/dev/null || echo "")
+# Construct APIM API resource ID from known values (Step 1b creates API via az CLI, not in TF state)
+if [[ "$ENABLE_APIM" == "true" && -n "$APIM_NAME_TF" ]]; then
+  AZ_SUB_ID=$(az account show --query id -o tsv)
+  APIM_API_ID="/subscriptions/${AZ_SUB_ID}/resourceGroups/${RG}/providers/Microsoft.ApiManagement/service/${APIM_NAME_TF}/apis/azure-openai"
+else
+  APIM_API_ID=""
+fi
 cd "$ROOT_DIR"
 
 echo "  ACR: $ACR_SERVER"
